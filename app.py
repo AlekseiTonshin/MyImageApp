@@ -1,81 +1,70 @@
 import asyncio
-import base64
-
 import aio_pika
-import gino
-from gino.ext.sanic import Gino
-from sanic import Sanic, response
-from sanic.response import json
-from sanic_openapi import swagger_blueprint
+from sanic import Sanic
+from sanic.response import json, raw
+from models import User, db
+
 
 app = Sanic("Image")
 
 
-app.config.DB_HOST = 'localhost'
-app.config.DB_DATABASE = 'gino'
-db = Gino()
+app.config.DB_HOST = '0.0.0.0'
+app.config.DB_DATABASE = 'test'
 db.init_app(app)
 
 
-
-def code_base64():
-    jpgtxt = base64.encodebytes(open("py.jpeg", "rb").read())
-    f = open("jpg1_b64.txt", "wb")
-    f.write(jpgtxt)
-    f.close()
-    return jpgtxt.decode()
-    # return str(jpgtxt)[:-3].replace("'","").replace("b","",1).replace(" ","")
-
-
-""" Работа с бд """
-class User(db.Model):
-    __tablename__ = 'image'
-    id = db.Column(db.Integer(), primary_key=True)
-    picture = db.Column(db.Text())
-
-
-async def main():
-    await db.set_bind('postgresql://localhost/gino')
+async def db_image_create():
+    await db.set_bind('postgresql://postgres:@0.0.0.0:5432/test')
     await db.gino.create_all()
-    img_code = code_base64()
-    user = await User.create(picture = img_code)
 
 
-async def no_main(loop):
+async def rabbit(loop, id_imgs):
     connection = await aio_pika.connect_robust(
-        "amqp://guest:guest@127.0.0.1/", loop=loop
-    )
-    str_image = code_base64()
+        "amqp://guest:guest@127.0.0.1/", loop=loop)
     async with connection:
-        routing_key = "images"
-
+        routing_key = "imgs"
         channel = await connection.channel()
-
         await channel.default_exchange.publish(
-            aio_pika.Message(str_image.encode()),
-            routing_key=routing_key,
-        )
+            aio_pika.Message(body=id_imgs.encode()),
+            routing_key=routing_key, )
 
-@app.route("/api/image_ch")
+
+@app.route("/api/image_ch", methods=['POST'])
 async def image_get(request):
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(no_main(loop))
-    loop.close()
-    return response.text('Изображение отправлено на обработку')
-    # code_image = code_base64()
-    # return response.text(code_image)
+    img_dict = request.files.get('file')
+    file_parameters = {
+    'body': img_dict.body,
+    'name': img_dict.name,
+    'type': img_dict.type,
+    }
+    file_body = file_parameters['body']
+    image = await User.create(picture_old=file_body)
+    id_imgs = await User.select('id').where(User.picture_old==file_body).gino.scalar()
+    id_imgs = str(id_imgs)
+    await rabbit(request.app.loop, id_imgs=id_imgs)
+    return json({'Изображение сохранено под номером': id_imgs})
+
 
 """ Картинка до изменений """
-@app.route("/api/image_old", methods=['GET', 'POST'])
-async def image_post(request):
-    return await response.file('/home/alekseit/MyApp/py.jpeg')
-    
+
+
+@app.route("/api/image_old/<id_img>", methods=['GET'])
+async def image_post(request, id_img):
+    images = await User.get_or_404(int(id_img))
+    img = images.picture_old
+    return raw(img)
+
 
 """ Картинка после изменений """
-@app.route("/api/image_new", methods=['GET', 'POST'])
-async def image_post1(request):
-    return await response.file('/home/alekseit/MyApp/py.png')
+
+
+@app.route("/api/image_new/<id_img1>", methods=['GET'])
+async def image_post1(request, id_img1):
+    images = await User.get_or_404(int(id_img1))
+    img = images.picture_new
+    return raw(img)
+
 
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(main())
+    asyncio.get_event_loop().run_until_complete(db_image_create())
     app.run(host="0.0.0.0", port=8000)

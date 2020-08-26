@@ -1,3 +1,0 @@
-#!/home/alekseit/MyApp/myvenv/bin/python3
-from requirements_detector.run import run
-run()

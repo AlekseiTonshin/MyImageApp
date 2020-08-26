@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "myapp"
+version = "0.1.0"
+description = ""
+authors = ["AlekseiTonshin <aleksei_tonshin812@mail.ru>"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+aio-pika = "^6.6.1"
+Pillow = "^7.2.0"
+asyncio = "^3.4.3"
+requests = "^2.24.0"
+sanic = "^19.12"
+gino = {version = "~=1.0", extras = ["sanic"]}
+alembic = "^1.4.2"
+prospector = "^1.2"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
